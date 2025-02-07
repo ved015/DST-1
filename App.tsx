@@ -14,7 +14,7 @@ export default function App() {
   const [loading, setLoading] = useState<boolean>(true);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
 
-  // Request permission to access the media library on mount.
+  // Request permission to access the photo library.
   useEffect(() => {
     (async () => {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -36,13 +36,11 @@ export default function App() {
         console.log("TensorFlow Ready!");
 
         // Load model files from the assets folder.
-        const modelJson = require("./assets/mnist_tfjs/model.json");
-        const modelWeights = require("./assets/mnist_tfjs/group1-shard1of1.bin");
+        const modelJson = require("./assets/mnist_tfjs2/model.json");
+        const modelWeights = require("./assets/mnist_tfjs2/group1-shard1of1.bin");
 
         // Load the model as a GraphModel.
-        const loadedModel = await tf.loadGraphModel(
-          bundleResourceIO(modelJson, [modelWeights])
-        );
+        const loadedModel = await tf.loadGraphModel(bundleResourceIO(modelJson, [modelWeights]));
         console.log("Model Loaded Successfully!");
         setModel(loadedModel);
       } catch (error) {
@@ -60,32 +58,29 @@ export default function App() {
       Alert.alert("Permission Denied", "You need to allow access to your photo library.");
       return;
     }
-
     try {
       console.log("Launching image library...");
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images, // Correct usage for images
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
         quality: 1,
       });
       console.log("ImagePicker result:", result);
 
-      // Handle both new and older versions of expo-image-picker's result.
+      // Handle both newer and older expo-image-picker responses.
       let uri: string | undefined = undefined;
       if (result.canceled !== undefined) {
-        // Newer API: result.canceled (boolean) and result.assets (array)
         if (!result.canceled && result.assets && result.assets.length > 0) {
           uri = result.assets[0].uri;
         }
       } else if (result.cancelled !== undefined) {
-        // Older API: result.cancelled (boolean) and result.uri (string)
         if (!result.cancelled && result.uri) {
           uri = result.uri;
         }
       }
-
       if (uri) {
+        console.log("Image URI selected:", uri);
         setImage(uri);
         predictImage(uri);
       } else {
@@ -100,43 +95,76 @@ export default function App() {
   const predictImage = async (uri: string) => {
     if (!model) return;
     try {
-      // Read the image as a base64 string.
+      console.log("Starting prediction for image:", uri);
+      
+      // Read and decode image
       const imgB64 = await FileSystem.readAsStringAsync(uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
       const imgBuffer = Buffer.from(imgB64, "base64");
-      const rawImageData = jpeg.decode(imgBuffer, true);
-
-      // Create a tensor from the image data.
+      const rawImageData = jpeg.decode(imgBuffer, { useTArray: true });
+  
+      // Create tensor from image data
       let imgTensor = tf.browser.fromPixels(rawImageData).toFloat();
-      // Resize the image to 28x28.
-      imgTensor = tf.image.resizeBilinear(imgTensor, [28, 28]);
-
-      // Convert to grayscale using weighted conversion:
-      // gray = 0.2989 * R + 0.5870 * G + 0.1140 * B
-      const [red, green, blue] = tf.split(imgTensor, 3, 2);
-      const grayTensor = red.mul(0.2989)
-        .add(green.mul(0.5870))
-        .add(blue.mul(0.1140));
-
-      // Remove the channel dimension: shape becomes [28,28].
-      let processedTensor = grayTensor.squeeze([2]);
-      // Add a batch dimension and normalize to [0,1]: shape becomes [1,28,28].
-      processedTensor = processedTensor.expandDims(0).div(255.0);
-
-      // (Optional) Invert colors if the image's overall brightness is high.
-      const meanValue = processedTensor.mean().dataSync()[0];
-      console.log("Mean pixel value:", meanValue);
-      // If the mean is high (e.g. > 0.5), assume the image is inverted relative to MNIST.
-      if (meanValue > 0.5) {
-        console.log("Inverting colors...");
+      console.log("Original tensor shape:", imgTensor.shape);
+  
+      // Convert to grayscale and maintain channel dimension
+      let grayTensor = tf.image.rgbToGrayscale(imgTensor);
+      console.log("Grayscale tensor shape:", grayTensor.shape);
+  
+      // Calculate aspect ratio preserving resize
+      const [height, width] = grayTensor.shape.slice(0, 2);
+      const maxDim = Math.max(height, width);
+      const scaleFactor = 20 / maxDim;
+      const newHeight = Math.floor(height * scaleFactor);
+      const newWidth = Math.floor(width * scaleFactor);
+  
+      // Resize with bilinear interpolation
+      let resizedTensor = tf.image.resizeBilinear(grayTensor, [newHeight, newWidth]);
+      console.log("Resized tensor shape:", resizedTensor.shape);
+  
+      // Calculate mean on the digit region before padding
+      const regionMean = resizedTensor.mean().dataSync()[0];
+      console.log("Resized region mean:", regionMean);
+  
+      // Pad to 28x28 with black borders
+      const padVert = 28 - newHeight;
+      const padHorz = 28 - newWidth;
+      const paddedTensor = tf.pad(resizedTensor, [
+        [Math.floor(padVert/2), Math.ceil(padVert/2)], // Vertical
+        [Math.floor(padHorz/2), Math.ceil(padHorz/2)], // Horizontal
+        [0, 0] // Channels
+      ]);
+      console.log("Padded tensor shape:", paddedTensor.shape);
+  
+      // Normalize and invert if needed
+      let processedTensor = paddedTensor.div(255.0);
+      if (regionMean > 0.3) { // More sensitive inversion threshold
         processedTensor = tf.sub(1, processedTensor);
+        console.log("Image inverted");
       }
-
-      // Run the model.
-      const predictionTensor = model.execute(processedTensor) as tf.Tensor;
-      const predictedClass = predictionTensor.argMax(-1).dataSync()[0];
+  
+      // Visualize the processed tensor
+      // const visualizationTensor = processedTensor.mul(255).toInt();
+      // tf.browser.toPixels(visualizationTensor.squeeze() as tf.Tensor2D, document.createElement('canvas'))
+      //   .then(data => {
+      //     console.log("Processed image preview available");
+      //     // You can implement actual image preview here if needed
+      //   });
+  
+      // Flatten and format for dense model
+      const inputTensor = processedTensor.reshape([1, 784]);
+      console.log("Input tensor values (sample):", 
+        Array.from(inputTensor.dataSync()).slice(0, 10).map(v => v.toFixed(2)));
+  
+      // Run prediction
+      const prediction = model.execute(inputTensor) as tf.Tensor;
+      const scores = Array.from(prediction.dataSync()).map(v => Number(v.toFixed(3)));
+      const predictedClass = scores.indexOf(Math.max(...scores));
+      
+      console.log("Prediction scores:", scores);
       setPrediction(predictedClass);
+  
     } catch (error) {
       console.error("Error processing image:", error);
     }
