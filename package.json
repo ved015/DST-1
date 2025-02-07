@@ -4,19 +4,38 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "start": "expo start --dev-client",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "web": "expo start --web"
   },
   "dependencies": {
+    "@react-native-async-storage/async-storage": "1.23.1",
+    "@tensorflow/tfjs": "^4.22.0",
+    "@tensorflow/tfjs-backend-wasm": "^4.22.0",
+    "@tensorflow/tfjs-backend-webgl": "^4.22.0",
+    "@tensorflow/tfjs-react-native": "^1.0.0",
+    "buffer": "^6.0.3",
     "expo": "~52.0.31",
+    "expo-asset": "~11.0.3",
+    "expo-camera": "^16.0.15",
+    "expo-file-system": "~18.0.10",
+    "expo-gl": "~15.0.4",
+    "expo-gl-cpp": "^11.4.0",
+    "expo-image-manipulator": "~13.0.6",
+    "expo-image-picker": "^16.0.5",
     "expo-status-bar": "~2.0.1",
+    "jpeg-js": "^0.4.4",
     "react": "18.3.1",
-    "react-native": "0.76.7"
+    "react-native": "0.76.7",
+    "react-native-fs": "^2.20.0",
+    "react-native-image-manipulator": "^1.0.6"
   },
   "devDependencies": {
-    "@babel/core": "^7.20.0"
+    "@babel/core": "^7.20.0",
+    "@types/react": "~18.3.12",
+    "@types/react-native": "^0.72.8",
+    "typescript": "^5.7.3"
   },
   "private": true,
   "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
