@@ -27,6 +27,8 @@ export default function App() {
   // gridMatrix: 2D array (28x28) representing the binarized digit
   const [gridMatrix, setGridMatrix] = useState<string[][]>([]);
   const [inputShape, setInputShape] = useState<string>("");
+  // New state: probabilities for each digit (0-9)
+  const [probabilities, setProbabilities] = useState<number[]>([]);
 
   // Request permission to access the photo library.
   useEffect(() => {
@@ -143,9 +145,11 @@ export default function App() {
       setGridMatrix(grid);
 
       const predictionTensor = model.execute(inputTensor) as tf.Tensor;
-      const scores = Array.from(predictionTensor.dataSync()).map((v) => Number(v.toFixed(3)));
+      const scores = Array.from(predictionTensor.dataSync()).map((v) => Number(v.toFixed(2)));
       const predictedClass = scores.indexOf(Math.max(...scores));
       setPrediction(predictedClass);
+      // Set probabilities so they can be displayed in a single row.
+      setProbabilities(scores);
 
       tf.dispose([
         imgTensor,
@@ -174,6 +178,14 @@ export default function App() {
         {inputShape !== "" && (
           <Text style={styles.inputShape}>Input Tensor Shape: {inputShape}</Text>
         )}
+        {/* Display probabilities array in a single row */}
+        {probabilities.length > 0 && (
+          <View style={styles.probabilitiesContainer}>
+            <Text style={styles.probabilityRow}>
+              {`[${probabilities.join(", ")}]`}
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* Middle 50%: Grid */}
@@ -187,7 +199,7 @@ export default function App() {
                     <Text
                       style={[
                         styles.gridCellText,
-                        cell === "1" && styles.gridCellTextOne, // Apply extra styling if cell is 1
+                        cell === "1" && styles.gridCellTextOne, // Extra styling for cells with value "1"
                       ]}
                     >
                       {cell}
@@ -245,6 +257,19 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: "#fff",
   },
+  probabilitiesContainer: {
+    marginTop: 5,
+    backgroundColor: "rgba(255,255,255,0.3)",
+    borderRadius: 5,
+    padding: 5,
+    width: "90%",
+    alignItems: "center",
+  },
+  probabilityRow: {
+    fontSize: 16,
+    color: "#fff",
+    textAlign: "center",
+  },
   gridContainer: {
     flex: 0.5,
     width: "100%",
@@ -277,9 +302,9 @@ const styles = StyleSheet.create({
   },
   // Extra style for cells with value "1"
   gridCellTextOne: {
-    fontSize: 17,       // Slightly larger
-    fontWeight: "bold", // Bold
-    color: "#f39c12",   // Different (vibrant) colour
+    fontSize: 17,
+    fontWeight: "bold",
+    color: "#f39c12",
   },
   placeholderText: {
     fontSize: 16,
